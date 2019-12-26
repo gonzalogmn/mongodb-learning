@@ -475,11 +475,179 @@ En el caso en el que queramos que múltiples aplicaciones corran de forma concur
 
 #### Query Optimization
 
-#### Analyze Query Performance
+##### Create an Index to Support Read Operations
+
+Un índice puede prevenir el realizar un scan de toda la colección. Además de optimizar las operaciones de lectura, los índices facilitan las operaciones de ordenación. Para índices sobre un único campo, la selección entre ordenación ascendente o descendente es indiferente. Para el caso de índices compuestos, la elección es importante.
+
+##### Query Selectivity
+
+Se refiere a cuán eficiente es el predicado de la query excluyendo o filtrando documentos en una colección.
+
+Las queries pueden ser más selectivas (un índice sobre el campo _id sólo me va a devolver un documento), o menos (en cuyo caso es cuestionable el uso de un índice).
+
+Por ejemplo, según el caso, puede darse que una query con `$nin` y `$ne` sea igual de efectiva con o sin índice.
+
+##### Evaluate Performance of Current Operations
+
+MongoDB tiene un profils que muestra las características de rendimiento de cada operación sobre la base de datos. Esto nos puede ayudar a buscar las operaciones que estén siendo lentas, y nos ayuda a determinar qué índices crear.
+
+Los métodos `cursor.explain()` y `db.collection.explain()` devuelven información sobre la ejecución de una query. Por ejemplo:
+
+```javascript
+db.records.find( { a: 1 } ).explain("executionStats") // Se le puede pasar "queryPlanner", "executionStats" o "allPlansExecution"
+```
+
+El resultado de un explain tiene esta estructura:
+
+```javascript
+   "queryPlanner" : {
+         "plannerVersion" : 1,
+         ...
+         "winningPlan" : {
+            "stage" : "COLLSCAN",
+            ...
+         }
+   },
+   "executionStats" : {
+      "executionSuccess" : true,
+      "nReturned" : 3,
+      "executionTimeMillis" : 0,
+      "totalKeysExamined" : 0,
+      "totalDocsExamined" : 10,
+      "executionStages" : {
+         "stage" : "COLLSCAN",
+         ...
+      },
+      ...
+   },
+   ...
+}
+```
+
+- Los stages pueden ser:
+  * COLLSCAN: escaneo de toda la colección.
+  * IXSCAN: escaneo de índice/s.
+  * FETCH: traer los documentos.
+  * SHARD_MERGE: mergear los resultados de los shards.
+  * SHARDING_FILTER: filtrado de los documentos "huérfanos" de los shards.
+
+- nReturned: número de documentos devuelto.
+- totalKeysExamined: entradas de índice escaneadas.
+- totalDocsExamined: cuántos documentos ha tenido que escanear MongoDB.
+
+En una situación ideal, si la colección tiene 10 documentos y la consulta nos tiene que devolver 3, entonces totalKeysExamined = 3  y totalDocsExamined = 3.
+
+
+Para forzar la ejecución de un índice, se puede usar el método `hint()`:
+
+```javascript
+// Creamos dos índices
+db.inventory.createIndex( { quantity: 1, type: 1 } )
+db.inventory.createIndex( { type: 1, quantity: 1 } )
+
+// Forzamos la ejecución con el primer índice
+db.inventory.find(
+   { quantity: { $gte: 100, $lte: 300 }, type: "food" }
+).hint({ quantity: 1, type: 1 }).explain("executionStats")
+
+// Forzamos la ejecución con el segundo índice
+db.inventory.find(
+   { quantity: { $gte: 100, $lte: 300 }, type: "food" }
+).hint({ type: 1, quantity: 1 }).explain("executionStats")
+```
 
 ## Aggregation
 
+Las operaciones de agregación procesan registros de datos y devuelven resultados computados. Las operaciones de agregación agrupan valores de múltiples documentos, y pueden realizar una gran variedad de operaciones sobre los datos agrupados, devolviendo un único resultado.
+
+Existen tres métodos para realizar una agregación: *aggregation pipeline*, *map-reduce* y *single purpose aggregation*. 
+
+Comparación [SQL - Aggregation](https://docs.mongodb.com/manual/reference/sql-aggregation-comparison/).
+
 ### Aggregation Pipeline
+
+El pipeline de agregación es un framework para agregación de datos, modelado mediante el concepto de pipelines.
+
+Por ejemplo:
+
+```javascript
+db.orders.aggregate([
+   { $match: { status: "A" } },
+   { $group: { _id: "$cust_id", total: { $sum: "$amount" } } }
+])
+```
+- Stage 1: `$match` filtra los documentos.
+- Stage 2: `$group` agrupa los docuemntos por el campo cust_id
+
+#### Pipeline
+
+Un pipeline se compone de una serie de etapas o *stages*. [Listado completo](https://docs.mongodb.com/manual/reference/operator/aggregation-pipeline/#aggregation-pipeline-operator-reference) de *aggregation pipeline stages*
+
+#### Aggregation Pipeline Optimization (COMPLETAR)
+
+
+#### Aggregation with the Zip Code Data Set
+
+Si tenemos una colección zipcodes con el siguiente modelo de documento:
+
+```javascript
+{
+  "_id": "10280",
+  "city": "NEW YORK",
+  "state": "NY",
+  "pop": 5574,
+  "loc": [
+    -74.016323,
+    40.710537
+  ]
+}
+```
+
+- Si, por ejemplo, queremos devolver todos los estados con una población mayor de 10 millones:
+
+```javascript
+db.zipcodes.aggregate( [
+   { $group: { _id: "$state", totalPop: { $sum: "$pop" } } },
+   { $match: { totalPop: { $gte: 10*1000*1000 } } }
+] )
+```
+Y el resultado muestra:
+
+```javascript
+{
+  "_id" : "AK",
+  "totalPop" : 550043
+}
+```
+
+- Si, por ejemplo, queremos devolver la media de población de las ciudades de cada estado:
+
+```javascript
+db.zipcodes.aggregate( [
+   { $group: { _id: { state: "$state", city: "$city" }, pop: { $sum: "$pop" } } },
+   { $group: { _id: "$_id.state", avgCityPop: { $avg: "$pop" } } }
+] )
+```
+  * El primer *stage* devuelve algo como lo siguiente:
+
+```javascript
+{
+  "_id" : {
+    "state" : "CO",
+    "city" : "EDGEWATER"
+  },
+  "pop" : 13154
+}
+```
+
+  * El segundo devuelve:
+```javascript
+{
+  "_id" : "MN",
+  "avgCityPop" : 5335
+}
+```
+
 
 ### Map-Reduce
 
