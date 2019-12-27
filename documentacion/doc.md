@@ -648,12 +648,364 @@ db.zipcodes.aggregate( [
 }
 ```
 
-
-### Map-Reduce
+### Map-Reduce (COMPLETAR)
 
 ## Data Models
 
-## Transactions
+La estructura de un documento puede seguir dos variantes:
+
+### Embedded Data
+
+Las relaciones entre los datos se almacenan en una única estructura. Es un modelo desnormalizado, que permite devolver los datos relacionados en una única operación en la base de datos.
+
+En este caso, un modelo desnormalizado favorece la atomicidad, ya que la atomicidad es a nivel de un único documento.
+
+```javascript
+{
+   _id: <ObjectId>,
+   username: "1234abx",
+   contact: {
+      phone: "123-456-7890",
+      email: "xyz@example.com"
+   }
+}
+```
+
+Por lo general, es recomendado usar datos embebidos:
+* Cuando hay relaciones de un objeto conteniendo a otro.
+* Cuando hay relaciones one-to-many, donde en el lado "many", los documentos hijos siempre se ven desde el contexto del lado "one" de la relación, y no tienen sentido por sí solos.
+
+### References
+
+Las relaciones se almacenan mediante referencias de un documento a otro. Es un modelo normalizado.
+
+```javascript
+// user document
+{
+   _id: <ObjectId1>,
+   username: "1234abx"
+}
+
+// contact document
+{
+   _id: <ObjectId2>,
+   user_id: <ObjectId1>, // referencia a user document
+   phone: "123-456-7890",
+   email: "xyz@example.com"
+}
+```
+
+Por lo general, usar referencias:
+* Cuando es necesario conservar relaciones many-to-many complejas.
+* Cuando hay que modelar datasets jerárquicos de gran tamaño.
+
+Para hacer el join de las colecciones, se puede usar `$lookup` o `$grapLookup`.
+
+MongoDB usa uno de los dos siguientes métodos para relacionar documentos:
+- **Referencias manuales:** cuando guardamos el _id de un documento en otro documento a modo de referencia. Por lo general, utilizar esta forma.
+- **DBRefs:**  es una referencia de un documento a otro, ussando el valor del _id del primer documento, el nombre de la colección y opcionalmente el nombre de la base de datos. Es un formato común para representar links entre documentos.
+
+```javascript
+{ "$ref" : <value>, "$id" : <value>, "$db" : <value> }
+```
+
+### Schema Validation
+
+Las reglas de validación se configuran a nivel de colección. Estas reglas se configuran añadiendo la opción `validator` en `db.createCollection()`.
+
+Para añadir validación a una colección ya existente, usar el comando `collMod` con la opción `validator`.
+
+```javascript
+db.runCommand( {
+   collMod: "contacts",
+   validator: { $jsonSchema: {
+      bsonType: "object",
+      required: [ "phone", "name" ],
+      properties: {
+         phone: {
+            bsonType: "string",
+            description: "must be a string and is required"
+         },
+         name: {
+            bsonType: "string",
+            description: "must be a string and is required"
+         }
+      }
+   } },
+   validationLevel: "moderate"
+} )
+```
+
+MongoDB tiene las siguientes opciones:
+- `validationLevel`: determina cuán estricto es MongoDB aplicando las reglas de validación a los documentos existentes durante un update. Si es `strict` (por defecto), aplica las reglas a cualquier insert o update. Si es `moderate`, aplica las reglas a inserts y updates a documentos eistentes que ya cumplen el criterio de validación.
+- `validationAction`: determina si MongoDB debe lanzar error y rechazar documentos que violen las reglas de validación, o si debe lanzar un warning y permitir el documento inválido. Si el valor es `error` (por defecto), MongoDB rechaza cualquier insert o update que viole el criterio de validación. Si es `warn`, muestra por log el warning pero inserta o actualiza.
+
+
+Se puede saltar la validación mediante la opción `bypassDocumentValidation`.
+
+### JSON Schema
+
+Desde la versión 3.6, MongoDB permite *JSON Schema Validation*, usando el operador `$jsonSchema`. Esta es la opción recomendada.
+
+```javascript
+db.createCollection("students", {
+   validator: {
+      $jsonSchema: {
+         bsonType: "object",
+         required: [ "name", "year", "major", "address" ],
+         properties: {
+            name: {
+               bsonType: "string",
+               description: "must be a string and is required"
+            },
+            year: {
+               bsonType: "int",
+               minimum: 2017,
+               maximum: 3017,
+               description: "must be an integer in [ 2017, 3017 ] and is required"
+            },
+            major: {
+               enum: [ "Math", "English", "Computer Science", "History", null ],
+               description: "can only be one of the enum values and is required"
+            },
+            gpa: {
+               bsonType: [ "double" ],
+               description: "must be a double if the field exists"
+            },
+            address: {
+               bsonType: "object",
+               required: [ "city" ],
+               properties: {
+                  street: {
+                     bsonType: "string",
+                     description: "must be a string if the field exists"
+                  },
+                  city: {
+                     bsonType: "string",
+                     "description": "must be a string and is required"
+                  }
+               }
+            }
+         }
+      }
+   }
+})
+```
+
+### Data Model Examples and Patterns
+
+#### Model Relationships Between Documents
+
+##### Model One-to-One Relationships with Embedded Documents
+
+Modelo normalizado:
+
+```javascript
+{
+   _id: "joe",
+   name: "Joe Bookreader"
+}
+
+{
+   patron_id: "joe",
+   street: "123 Fake Street",
+   city: "Faketon",
+   state: "MA",
+   zip: "12345"
+}
+```
+
+Y el modelo desnormalizado:
+
+```javascript
+{
+   _id: "joe",
+   name: "Joe Bookreader",
+   address: {
+              street: "123 Fake Street",
+              city: "Faketon",
+              state: "MA",
+              zip: "12345"
+            }
+}
+```
+
+##### Model One-to-Many Relationships with Embedded Documents
+
+Modelo normalizado:
+
+```javascript
+{
+   _id: "joe",
+   name: "Joe Bookreader"
+}
+
+{
+   patron_id: "joe",
+   street: "123 Fake Street",
+   city: "Faketon",
+   state: "MA",
+   zip: "12345"
+}
+
+{
+   patron_id: "joe",
+   street: "1 Some Other Street",
+   city: "Boston",
+   state: "MA",
+   zip: "12345"
+}
+```
+
+Y el modelo desnormalizado:
+
+```javascript
+{
+   _id: "joe",
+   name: "Joe Bookreader",
+   addresses: [
+                {
+                  street: "123 Fake Street",
+                  city: "Faketon",
+                  state: "MA",
+                  zip: "12345"
+                },
+                {
+                  street: "1 Some Other Street",
+                  city: "Boston",
+                  state: "MA",
+                  zip: "12345"
+                }
+              ]
+ }
+```
+
+##### Model One-to-Many Relationships with Document References
+
+En este ejemplo tenemos un mapeo entre books y publisher. Si embebemos la información de publisher dentro de book, esto nos llevaría a repetir muchas veces la información de publisher en distintos libros.
+
+En el siguiente ejemplo se ve que la información de publisher se encuentra repetida varias veces:
+
+```javascript
+{
+   title: "MongoDB: The Definitive Guide",
+   author: [ "Kristina Chodorow", "Mike Dirolf" ],
+   published_date: ISODate("2010-09-24"),
+   pages: 216,
+   language: "English",
+
+   publisher: {
+
+              name: "O'Reilly Media",
+
+              founded: 1980,
+
+              location: "CA"
+
+            }
+
+}
+
+{
+   title: "50 Tips and Tricks for MongoDB Developer",
+   author: "Kristina Chodorow",
+   published_date: ISODate("2011-05-06"),
+   pages: 68,
+   language: "English",
+
+   publisher: {
+
+              name: "O'Reilly Media",
+
+              founded: 1980,
+
+              location: "CA"
+
+            }
+
+}
+```
+
+Si usamos referencias, ¿dónde ponemos la referencia, en publisher o en cada book?. Depende de lo grandes que sean las relaciones.
+
+Si el número de books por publisher es pequeño y con un crecimiento limitado, almacenar el array de books en publisher podría ser útil.
+
+```javascript
+{
+   name: "O'Reilly Media",
+   founded: 1980,
+   location: "CA",
+   books: [123456789, 234567890, ...]
+}
+```
+
+Pero para evitar ese array mutable y posiblemente creciente, podemos almacenar la referencia en cada book:
+
+```javascript
+{
+   _id: 123456789,
+   title: "MongoDB: The Definitive Guide",
+   author: [ "Kristina Chodorow", "Mike Dirolf" ],
+   published_date: ISODate("2010-09-24"),
+   pages: 216,
+   language: "English",
+   publisher_id: "oreilly"
+}
+
+```
+
+#### Model Tree Structures (COMPLETAR)
+
+##### Model Tree Structures with Parent References (COMPLETAR)
+
+##### Model Tree Structures with Child References (COMPLETAR)
+
+
+#### Model Specific Application Contexts
+
+##### Model Data for Atomic Operations
+
+##### Model Data to Support Keyword Search
+
+
+## Transactions (COMPLETAR)
 
 ## Indexes
+
+Por defecto, MongoDB crea un índice único sobre el campo _id durante la creación de una colección. Este índice no se puede borrar.
+
+Para crear un índice:
+
+```javascript
+db.collection.createIndex( <key and index type specification>, <options> )
+
+// Por ejemplo
+db.collection.createIndex( { name: -1 } )
+```
+
+El nombre de un índice por defecto es la concatenación de las keys y su "dirección (1 o -1). Por ejemplo, un índice `{ item : 1, quantity: -1 }` será `item_1_quantity_-1`.
+
+Para saber los índices existentes en una colección:
+
+```javascript
+db.collection.getIndexes()
+```
+
+Los índices pueden ser:
+- Sobre un único campo: en este caso, la ordenación ascendente o descendente da igual.
+- Índices compuestos: en este caso, la ordenación sí es importante.
+- Índices multikey: sirven para indexar el contenido en arrays. Si indexamos un campo que contiene un array, MongoDB crea una entrada en el índice por cada elemento del array. Esto permite queries buscando sobre elemento/s dentro del array.
+- índices *Geospatial index*
+- Índices de texto
+- Índices *Hashed index*
+
+## Change Streams (COMPLETAR)
+
+## Replication
+
+## Sharding
+
+## Administration (COMPLETAR)
+
+## Storage (COMPLETAR)
 
