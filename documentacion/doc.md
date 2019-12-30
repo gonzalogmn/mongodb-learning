@@ -1002,8 +1002,58 @@ Los índices pueden ser:
 ## Change Streams (COMPLETAR)
 
 ## Replication
+Un *replica set* en MongoDB es un grupo de procesos **mongod** que mantienen el mismo data set. Los *replica sets* proveen de redundancia y alta disponibilidad.
+
+Un *replica set* contiene varios *data bearing nodes* y opcionalmente un *arbiter node*. En los *data bearing nodes*, solo un miembro será el nodo primario, siendo el resto secundarios. El nodo primario recibe todas las operaciones de escritura, las aplicará en su data set y guardará todos los cambios en su log de operaciones o **oplog**.
+
+![replica sets](https://docs.mongodb.com/manual/_images/replica-set-read-write-operations-primary.bakedsvg.svg)
+
+Los nodos secundarios replicarán (de forma asíncrona) el oplog del nodo primario y aplicarán las operaciones a sus data sets, de tal forma que los data sets de los nodos secundarios sean un reflejo del data set primario. 
+
+Si un nodo primario se cae, se seleccionará un nodo secundario, que pasará a ser el primario.
+
+El *arbiter node* no mantiene un data set. Su propósito es mantener un quorum y responder a las peticiones de elección de otros *replica set*. Si se tiene un número par de nodos, se puede añadir un *arbiter node* para obtener una mayoría de votos en una elección para nodo primario.
+
+### `oplog`
+
+El `oplog` u *operations log* es una colección especial que mantiene un registro de toda las operaciones que modifican los datos almacenados en las bases de datos.
 
 ## Sharding
+
+El *sharding* es un método de ditribución de los datos a lo largo de múltiples máquinas. MongoDB usa sharding para permiter despliegues con grandes data sets y altos niveles de *throughput*. De otra forma, si solo tuviéramos un servidor, podríamos saturarlo.
+
+Existen dos formas de hacer frente al crecimiento de un sistema: el escalado horizontal o vertical.
+- Escalado vertical: implica aumentar la capacidad del único servidor. Esto implica que hay un límite práctico máximo.
+- Escalado horizontal: implica dividir el sistema y mantenerlo entre múltiples servidores, pudiendo añadir nuevos servidores a medida que aumente la capacidad requerida. Esto añade complejidad a la infraestructura y despliegue.
+
+MongoDB soporta el escalado horizontal a través de *sharding*.
+
+### Sharded Cluster
+Un *sharded cluster* se compone de los siguientes componentes:
+- **shard**: cada *shard* contiene un subset de los datos. Cada *shard* puede ser desplegado como un *replica set*.
+- **mongos**: actúa como un *query router*, actuando como interfaz entre las aplicaciones cliente y el cluster.
+- **config servers**: almacenan metadatos y configuraciones para el cluster.
+
+![architecture](https://docs.mongodb.com/manual/_images/sharded-cluster-production-architecture.bakedsvg.svg)
+
+MongoDB realiza el sharding a nivel de colección, distribuyendo los datos de la colección entre los shards del cluster.
+
+### Shard Keys
+MongoDB usa una *shard key* para distribuir los documentos de una colección entre los shards. La *shard key* consiste en un campo o campos que existen en cualquier documento de la colección.
+
+Al hacer sharding de una colección, elegimos la *shard key*, y no puede ser cambiada posteriormente. 
+
+La colección debe tener un índice que empiece por la *shard key*.
+
+### Sharded and Non-Sharded Collections
+Una base de datos puede tener una mezcla de colecciones sharded y non-sharded. Las colecciones non-sharded se almacenan en un shard primario (cada base de datos tiene el suyo).
+
+![sharded](https://docs.mongodb.com/manual/_images/sharded-cluster-primary-shard.bakedsvg.svg)
+
+Para conectarnos a un sharded cluster debemos conectarnos a un *mongos router*, ya sea para consultar sobre una colección sharded o non-sharded.
+
+![mongos sharded](https://docs.mongodb.com/manual/_images/sharded-cluster-mixed.bakedsvg.svg)
+
 
 ## Administration (COMPLETAR)
 
