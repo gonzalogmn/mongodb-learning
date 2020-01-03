@@ -999,6 +999,26 @@ Los índices pueden ser:
 - Índices de texto
 - Índices *Hashed index*
 
+### Index Intersection
+
+MongoDB puede utilizar la intersección de múltiples índices para realizar una query.
+
+Si por ejemplo tenemos la colección `orders` con los siguientes índices:
+
+```javascript
+{ qty: 1}
+{ item: 1}
+```
+
+A la hora de realizar la siguiente query, puede hacer uso de la intersección de los dos índices:
+
+```javascript
+db.orders.find({ item: "abc123", qty: { $gt: 15}})
+```
+Para comprobar si MongoDB hace uso de la intersección, ejecutamos `explain()`. 
+
+
+
 ## Change Streams (COMPLETAR)
 
 ## Replication
