@@ -1074,6 +1074,9 @@ Para conectarnos a un sharded cluster debemos conectarnos a un *mongos router*, 
 
 ![mongos sharded](https://docs.mongodb.com/manual/_images/sharded-cluster-mixed.bakedsvg.svg)
 
+### Sharding Strategy
+
+#### 
 
 ## Administration (COMPLETAR)
 
